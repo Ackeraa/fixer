@@ -4,9 +4,11 @@ const SYSTEM_PROMPT = `你是一名英语教学讲义质检专家。请检查学
 
 非常重要的判定规则（必须遵守）：
 1. 只允许基于“提供的文本内容”下结论，禁止脑补版面、图片、音频、外部教材。
-2. 若题干提到 photo / listen / audio 等外部资源，但文本中无法确认其是否缺失：
-   - 不要直接判为 high
-   - 应判为 low 或 medium，并在 description 标注“需教师确认外部资源是否配套”
+2. 以下问题一律不要输出到 issues（直接忽略）：
+   - “photos/图片/配图缺失”类判断
+   - “listen/audio/听力资源缺失”类判断
+   - “表格未显示/表格缺失”类判断（仅因纯文本解析看不到版式而产生）
+   - 基于“Complete the table ...”推导出的“后续题无法作答”链式判断
 3. high 级问题必须满足：有明确文本证据，且会直接导致学生无法作答或答案错误。
 4. 每个问题都要给出简短证据片段（原文摘录不超过20词）放在 description 里。
 5. 若证据不足，宁可不报；避免误报。
@@ -51,7 +53,38 @@ async function checkLectureQuality(lectureDoc) {
 - 解析警告：${lectureDoc.stats.warnings.length ? lectureDoc.stats.warnings.join(" | ") : "无"}
 
 请检查以下学生用书/讲义内容：\n\n${truncated}`;
-  return chatJson(SYSTEM_PROMPT, userPrompt);
+  const result = await chatJson(SYSTEM_PROMPT, userPrompt);
+  return sanitizeLectureIssues(result);
+}
+
+const IGNORE_PATTERNS = [
+  /photo|photos|图片|配图|看图|图[片文]|A-E|A\/B|A、B/i,
+  /listen|listening|audio|音频|听力|录音/i,
+  /表格未.*出现|无表格|缺少表格|table.*未.*出现/i,
+  /complete the table/i,
+  /exercise\s*\d+.*table/i,
+  /table with the .* in the box/i,
+  /无法作答|无法完成|不能作答/i,
+];
+
+function shouldIgnoreIssue(issue) {
+  const location = `${issue?.location || ""}`;
+  const description = `${issue?.description || ""}`;
+  const suggestion = `${issue?.suggestion || ""}`;
+  const blob = `${location} ${description} ${suggestion}`;
+
+  const hasTableCue =
+    /table|表格|complete the table|exercise\s*\d+/i.test(blob) &&
+    /缺失|没有|未显示|无法作答|无法完成|不能作答|跳到\s*["']?\d+/i.test(blob);
+
+  return hasTableCue || IGNORE_PATTERNS.some((re) => re.test(blob));
+}
+
+function sanitizeLectureIssues(result) {
+  const normalized = result && typeof result === "object" ? result : {};
+  const issues = Array.isArray(normalized.issues) ? normalized.issues : [];
+  normalized.issues = issues.filter((it) => !shouldIgnoreIssue(it));
+  return normalized;
 }
 
 module.exports = { checkLectureQuality };
