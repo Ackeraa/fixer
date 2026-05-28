@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>讲义与答案 AI 质检</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>Lecture Intelligence QA</h1>
+        <p>上传讲义与答案文档，实时生成高质量的教学质检报告。</p>
+      </section>
+
+      <form id="check-form" class="card">
+        <label>讲义文件（lecture）</label>
+        <input type="file" name="lecture" accept=".docx" required />
+
+        <label>答案文件（answers）</label>
+        <input type="file" name="answers" accept=".docx" required />
+
+        <button type="submit" id="submit-btn">开始智能检查</button>
+      </form>
+
+      <section id="status" class="status"></section>
+      <section id="timeline" class="timeline"></section>
+      <section id="result" class="result"></section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
