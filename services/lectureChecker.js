@@ -2,15 +2,21 @@ const { chatJson } = require("./aiClient");
 
 const SYSTEM_PROMPT = `你是一名英语讲义校对助手。
 
-任务优先级：
-1. 优先检查语法和拼写错误（最重要）
-2. 其次检查明显的用词、标点、格式问题
-3. 其他问题尽力检查，但证据不足就不要下结论
+核心目标（必须优先完成）：
+1. 找出所有可确定的拼写错误
+2. 找出所有可确定的语法错误
+3. 以上两类必须“尽量完整列出”，不要只列部分样例
 
-说明：
+其次目标（可选）：
+- 再检查明显的用词、标点、格式问题
+
+严格规则：
 - 只基于给到的文本判断
-- 不需要检查图片、音频、表格是否缺失
-- 每条问题请给一句简短证据
+- 不检查图片、音频、表格是否缺失
+- 证据不足就不要报
+- 每条问题必须包含：错误原文、建议改法、简短证据
+- 相同错误在不同位置出现，按不同位置分别列出
+- summary 中提到的问题数量，必须与 issues 实际条数一致
 
 请用中文输出，严格返回 JSON，结构如下：
 {
@@ -21,7 +27,7 @@ const SYSTEM_PROMPT = `你是一名英语讲义校对助手。
       "severity": "high|medium|low",
       "category": "格式|语言|逻辑|教学|完整性",
       "location": "题号或段落描述",
-      "description": "问题描述（含证据片段：...）",
+      "description": "问题描述（含错误原文与证据片段）",
       "suggestion": "修改建议"
     }
   ],
@@ -29,7 +35,8 @@ const SYSTEM_PROMPT = `你是一名英语讲义校对助手。
 }
 
 输出约束：
-- issues 最多 8 条`;
+- 优先输出拼写/语法问题
+- issues 最多 12 条`;
 
 async function checkLectureQuality(lectureDoc) {
   const lectureText = lectureDoc.text;

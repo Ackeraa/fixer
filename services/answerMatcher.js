@@ -8,6 +8,7 @@ const SYSTEM_PROMPT = `你是一名英语教学答案核验专家。用户会提
 - 只基于提供文本判断
 - 证据不足时用 uncertain
 - 每条 mismatch/criticalIssues 给一句简短证据
+- summary 中提到的错配/缺失数量要与数组条数一致
 
 请逐题比对答案是否与讲义题目对应，检查：
 1. 题号是否一一对应，有无漏答、多答、错位
