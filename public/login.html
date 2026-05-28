@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登录 - 讲义质检</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="container" style="max-width:560px;">
+      <section class="hero">
+        <h1>账户登录</h1>
+        <p>请输入账号后使用讲义质检服务。</p>
+      </section>
+
+      <form id="login-form" class="card">
+        <label>用户名</label>
+        <input id="username" name="username" type="text" value="lly" required />
+
+        <label>密码</label>
+        <input id="password" name="password" type="password" required />
+
+        <button type="submit" id="login-btn">登录</button>
+      </form>
+
+      <section id="login-status" class="status"></section>
+    </main>
+
+    <script src="/login.js"></script>
+  </body>
+</html>

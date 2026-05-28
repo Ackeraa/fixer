@@ -1,51 +1,112 @@
 const form = document.getElementById("check-form");
 const statusEl = document.getElementById("status");
+const timelineEl = document.getElementById("timeline");
 const resultEl = document.getElementById("result");
 const submitBtn = document.getElementById("submit-btn");
+const logoutBtn = document.getElementById("logout-btn");
+
 let latestQuality = null;
 let latestCorrespondence = null;
+const timelineSteps = ["upload_received", "parsing", "parsed", "quality_done", "done"];
+
+function escapeHtml(str) {
+  return String(str || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function severityBadge(sev) {
+  const key = (sev || "low").toLowerCase();
+  const label = key === "high" ? "高风险" : key === "medium" ? "中风险" : "低风险";
+  return `<span class="badge ${key}">${label}</span>`;
+}
+
+function renderTimeline(current) {
+  const idx = timelineSteps.indexOf(current);
+  const html = timelineSteps
+    .map((s, i) => {
+      const cls = i < idx ? "step done" : i === idx ? "step active" : "step";
+      const labelMap = {
+        upload_received: "文件接收",
+        parsing: "解析文档",
+        parsed: "结构完成",
+        quality_done: "讲义质检",
+        done: "答案核验",
+      };
+      return `<span class="${cls}">${labelMap[s]}</span>`;
+    })
+    .join("");
+  timelineEl.innerHTML = html;
+}
 
 function renderResult(data) {
+  const meta = data.meta || {};
   const quality = data.quality || {};
   const corr = data.correspondence || {};
 
-  const lines = [];
-  lines.push("=== 基本信息 ===");
-  lines.push(`讲义: ${data.meta?.lectureFileName || "-"}`);
-  lines.push(`答案: ${data.meta?.answersFileName || "-"}`);
-  lines.push(`模型: ${data.meta?.model || "-"}`);
-  lines.push("");
+  const score = Number(quality.overallScore || 0);
+  const matchRate = Number(corr.matchRate || 0);
+  const issues = Array.isArray(quality.issues) ? quality.issues : [];
+  const critical = Array.isArray(corr.criticalIssues) ? corr.criticalIssues : [];
+  const missing = Array.isArray(corr.missingInAnswers) ? corr.missingInAnswers : [];
+  const extra = Array.isArray(corr.extraInAnswers) ? corr.extraInAnswers : [];
 
-  lines.push("=== 讲义质量 ===");
-  lines.push(`总分: ${quality.overallScore ?? "-"}/10`);
-  lines.push(`总评: ${quality.summary || "-"}`);
-  if (Array.isArray(quality.issues) && quality.issues.length) {
-    lines.push("问题列表:");
-    quality.issues.forEach((it, i) => {
-      lines.push(`${i + 1}. [${it.severity || "-"}/${it.category || "-"}] ${it.location || "-"}`);
-      lines.push(`   问题: ${it.description || "-"}`);
-      lines.push(`   建议: ${it.suggestion || "-"}`);
-    });
-  }
+  const issuesHtml = issues.length
+    ? `<ul class="list">${issues
+        .slice(0, 10)
+        .map(
+          (it) => `<li>${severityBadge(it.severity)} <b>${escapeHtml(it.location || "位置未标注")}</b><br>${escapeHtml(it.description || "")}<br><span class="muted">建议：${escapeHtml(it.suggestion || "-")}</span></li>`
+        )
+        .join("")}</ul>`
+    : `<p class="muted">未发现明显问题。</p>`;
 
-  lines.push("");
-  lines.push("=== 答案对应性 ===");
-  lines.push(`匹配率: ${corr.matchRate ?? "-"}%`);
-  lines.push(`总评: ${corr.summary || "-"}`);
-  if (Array.isArray(corr.criticalIssues) && corr.criticalIssues.length) {
-    lines.push("关键问题:");
-    corr.criticalIssues.forEach((it, i) => {
-      lines.push(`${i + 1}. ${it.questionRef || "-"}: ${it.issue || "-"}`);
-      lines.push(`   建议: ${it.suggestion || "-"}`);
-    });
-  }
+  const criticalHtml = critical.length
+    ? `<ul class="list">${critical
+        .slice(0, 10)
+        .map(
+          (it) => `<li><b>${escapeHtml(it.questionRef || "题号未标注")}</b>：${escapeHtml(it.issue || "-")}<br><span class="muted">建议：${escapeHtml(it.suggestion || "-")}</span></li>`
+        )
+        .join("")}</ul>`
+    : `<p class="muted">未发现关键错配。</p>`;
 
-  if (Array.isArray(corr.missingInAnswers) && corr.missingInAnswers.length) {
-    lines.push("");
-    lines.push("答案缺失题目: " + corr.missingInAnswers.join("；"));
-  }
+  resultEl.innerHTML = `
+    <section class="metrics">
+      <article class="metric"><div class="label">讲义质量分</div><div class="value">${score || "-"}<span class="muted">/10</span></div></article>
+      <article class="metric"><div class="label">答案匹配率</div><div class="value">${matchRate || "-"}<span class="muted">%</span></div></article>
+      <article class="metric"><div class="label">讲义图片数</div><div class="value">${meta.lectureImageCount ?? "-"}</div></article>
+      <article class="metric"><div class="label">模型</div><div class="value" style="font-size:14px">${escapeHtml(meta.model || "-")}</div></article>
+    </section>
 
-  resultEl.textContent = lines.join("\n");
+    <section class="grid">
+      <article class="panel">
+        <h3>讲义质量评估</h3>
+        <p>${escapeHtml(quality.summary || "暂无总评")}</p>
+        <div class="progress"><i style="width:${Math.max(0, Math.min(100, score * 10))}%"></i></div>
+        ${issuesHtml}
+      </article>
+
+      <article class="panel">
+        <h3>答案对应性评估</h3>
+        <p>${escapeHtml(corr.summary || "暂无总评")}</p>
+        <div class="progress"><i style="width:${Math.max(0, Math.min(100, matchRate))}%"></i></div>
+        ${criticalHtml}
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h3>答案缺失题目</h3>
+        ${missing.length ? `<ul class="list">${missing.slice(0, 20).map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<p class="muted">无</p>`}
+      </article>
+      <article class="panel">
+        <h3>答案多余题目</h3>
+        ${extra.length ? `<ul class="list">${extra.slice(0, 20).map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<p class="muted">无</p>`}
+      </article>
+    </section>
+  `;
 }
 
 function renderPartial() {
@@ -91,9 +152,11 @@ async function readStreamResponse(resp) {
       const payload = JSON.parse(dataLines.join("\n"));
       if (eventName === "progress") {
         statusEl.textContent = payload.message || "处理中...";
+        renderTimeline(payload.step || "parsing");
       } else if (eventName === "partial") {
         if (payload.section === "quality") {
           latestQuality = payload.data;
+          renderTimeline("quality_done");
         } else if (payload.section === "correspondence") {
           latestCorrespondence = payload.data;
         }
@@ -102,6 +165,7 @@ async function readStreamResponse(resp) {
       } else if (eventName === "done") {
         finalResult = payload.result;
         statusEl.textContent = payload.message || "分析完成";
+        renderTimeline("done");
       } else if (eventName === "error") {
         throw new Error(payload.error || "分析失败");
       }
@@ -116,16 +180,17 @@ async function readStreamResponse(resp) {
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  resultEl.textContent = "";
+  resultEl.innerHTML = "";
+  timelineEl.innerHTML = "";
   statusEl.textContent = "正在上传并分析，请稍候...";
   submitBtn.disabled = true;
   latestQuality = null;
   latestCorrespondence = null;
+  renderTimeline("upload_received");
 
   const fd = new FormData(form);
-
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
     const resp = await fetch("/api/check-stream", {
@@ -139,12 +204,20 @@ form.addEventListener("submit", async (e) => {
   } catch (err) {
     statusEl.textContent = "分析失败";
     if (err.name === "AbortError") {
-      resultEl.textContent = "请求超时（90秒），可能是模型服务不可达或响应过慢。";
+      resultEl.innerHTML = `<p class="muted">请求超时（120秒），模型服务可能不可达或响应过慢。</p>`;
     } else {
-      resultEl.textContent = err.message;
+      resultEl.innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
     }
   } finally {
     clearTimeout(timeout);
     submitBtn.disabled = false;
+  }
+});
+
+logoutBtn?.addEventListener("click", async () => {
+  try {
+    await fetch("/api/logout", { method: "POST" });
+  } finally {
+    window.location.href = "/login";
   }
 });

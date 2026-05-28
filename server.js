@@ -4,6 +4,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const { parseDocxBuffer } = require("./services/docxParser");
 const { checkLectureQuality } = require("./services/lectureChecker");
@@ -12,6 +13,10 @@ const { getModel } = require("./services/aiClient");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const LOGIN_USERNAME = "lly";
+const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || "";
+const SESSION_COOKIE = "fixer_auth";
+const sessions = new Map();
 
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -30,7 +35,81 @@ const upload = multer({
   },
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static(path.join(__dirname, "public"), { index: false }));
+
+function parseCookies(req) {
+  const cookieHeader = req.headers.cookie || "";
+  const out = {};
+  for (const pair of cookieHeader.split(";")) {
+    const [k, ...rest] = pair.trim().split("=");
+    if (!k) continue;
+    out[k] = decodeURIComponent(rest.join("=") || "");
+  }
+  return out;
+}
+
+function isAuthenticated(req) {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (!token) return false;
+  const expiresAt = sessions.get(token);
+  if (!expiresAt || expiresAt < Date.now()) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function requireAuth(req, res, next) {
+  if (isAuthenticated(req)) return next();
+  return res.status(401).json({ error: "未登录或登录已过期" });
+}
+
+app.get("/", (req, res) => {
+  const page = isAuthenticated(req) ? "index.html" : "login.html";
+  res.sendFile(path.join(__dirname, "public", page));
+});
+
+app.get("/login", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body || {};
+  if (!LOGIN_PASSWORD) {
+    return res.status(500).json({ error: "服务端未配置 LOGIN_PASSWORD" });
+  }
+  if (username !== LOGIN_USERNAME || password !== LOGIN_PASSWORD) {
+    return res.status(401).json({ error: "用户名或密码错误" });
+  }
+
+  const token = crypto.randomBytes(24).toString("hex");
+  const ttlMs = 12 * 60 * 60 * 1000;
+  sessions.set(token, Date.now() + ttlMs);
+
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; Max-Age=${Math.floor(
+      ttlMs / 1000
+    )}; SameSite=Lax`
+  );
+  return res.json({ ok: true, username: LOGIN_USERNAME });
+});
+
+app.post("/api/logout", (req, res) => {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (token) sessions.delete(token);
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`
+  );
+  res.json({ ok: true });
+});
+
+app.get("/api/me", (req, res) => {
+  res.json({ authenticated: isAuthenticated(req), username: LOGIN_USERNAME });
+});
 
 function writeSseEvent(res, event, payload) {
   res.write(`event: ${event}\n`);
@@ -49,6 +128,7 @@ app.get("/api/health", (_req, res) => {
 
 app.post(
   "/api/check-stream",
+  requireAuth,
   upload.fields([
     { name: "lecture", maxCount: 1 },
     { name: "answers", maxCount: 1 },
@@ -133,6 +213,7 @@ app.post(
 
 app.post(
   "/api/check",
+  requireAuth,
   upload.fields([
     { name: "lecture", maxCount: 1 },
     { name: "answers", maxCount: 1 },

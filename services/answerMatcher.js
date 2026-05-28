@@ -50,8 +50,8 @@ async function verifyAnswers(lectureDoc, answerDoc) {
       : answerText;
 
   const userPrompt = `文档结构信息：
-- 讲义：字符 ${lectureDoc.stats.charCount}，段落 ${lectureDoc.stats.paragraphCount}，图片 ${lectureDoc.stats.imageCount}
-- 答案：字符 ${answerDoc.stats.charCount}，段落 ${answerDoc.stats.paragraphCount}，图片 ${answerDoc.stats.imageCount}
+- 讲义：字符 ${lectureDoc.stats.charCount}，段落 ${lectureDoc.stats.paragraphCount}
+- 答案：字符 ${answerDoc.stats.charCount}，段落 ${answerDoc.stats.paragraphCount}
 
 ## 学生用书/讲义\n\n${lecture}\n\n---\n\n## 答案文档\n\n${answers}`;
   return chatJson(SYSTEM_PROMPT, userPrompt);
